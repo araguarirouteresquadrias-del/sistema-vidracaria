@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vidraçaria - Estoque Mobile</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .estoque-baixo { border-left: 4px solid #dc3545; background: #ffe6e6; }
+        .estoque-normal { border-left: 4px solid #28a745; }
+        .btn-mobile { padding: 10px; font-size: 14px; }
+        .navbar-brand { font-size: 1.1rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary sticky-top">
+        <div class="container-fluid">
+            <span class="navbar-brand">
+                📦 Estoque Vidraçaria
+            </span>
+            <div>
+                <button class="btn btn-light btn-sm me-2" onclick="atualizarEstoque()">
+                    🔄
+                </button>
+                <a href="/logout" class="btn btn-warning btn-sm">
+                    Sair
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+        <div class="row mb-3">
+            <div class="col-6">
+                <button class="btn btn-success w-100 btn-mobile" onclick="abrirVenda()">
+                    💰<br>Venda
+                </button>
+            </div>
+            <div class="col-6">
+                <button class="btn btn-primary w-100 btn-mobile" onclick="abrirEntrada()">
+                    📥<br>Entrada
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <h5>📋 Estoque Atual</h5>
+                <div id="lista-estoque"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modalVenda">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Registrar Venda</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-venda">
+                        <div class="mb-3">
+                            <label>Item Selecionado:</label>
+                            <input type="text" class="form-control" id="item-venda" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label>Quantidade:</label>
+                            <input type="number" class="form-control" id="qtd-venda" step="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label>Descrição:</label>
+                            <input type="text" class="form-control" id="desc-venda" placeholder="Ex: Venda para cliente João" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmarVenda()">Registrar Venda</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        let itemSelecionado = null;
+        
+        async function carregarEstoque() {
+            try {
+                const response = await fetch('/api/estoque');
+                const estoque = await response.json();
+                
+                const lista = document.getElementById('lista-estoque');
+                lista.innerHTML = '';
+                
+                if (estoque.length === 0) {
+                    lista.innerHTML = '<div class="alert alert-info">Nenhum item em estoque</div>';
+                    return;
+                }
+                
+                estoque.forEach(item => {
+                    const classeEstoque = item.quantidade < 10 ? 'estoque-baixo' : 'estoque-normal';
+                    
+                    const div = document.createElement('div');
+                    div.className = `card mb-2 ${classeEstoque}`;
+                    div.innerHTML = `
+                        <div class="card-body">
+                            <h6 class="card-title">${item.nome}</h6>
+                            <p class="mb-1"><strong>Código:</strong> ${item.codigo || 'N/A'}</p>
+                            <p class="mb-1"><strong>Cor:</strong> ${item.cor}</p>
+                            <p class="mb-2"><strong>Estoque:</strong> ${item.quantidade} ${item.unidade_medida}</p>
+                            <button class="btn btn-sm btn-warning" onclick="selecionarItem(${item.id}, '${item.nome} - ${item.cor}')">
+                                🛒 Vender
+                            </button>
+                        </div>
+                    `;
+                    lista.appendChild(div);
+                });
+            } catch (error) {
+                alert('Erro ao carregar estoque: ' + error);
+            }
+        }
+        
+        function selecionarItem(id, nome) {
+            itemSelecionado = id;
+            document.getElementById('item-venda').value = nome;
+            document.getElementById('qtd-venda').value = '';
+            document.getElementById('desc-venda').value = '';
+            new bootstrap.Modal(document.getElementById('modalVenda')).show();
+        }
+        
+        async function confirmarVenda() {
+            const quantidade = parseFloat(document.getElementById('qtd-venda').value);
+            const descricao = document.getElementById('desc-venda').value;
+            
+            if (!quantidade || quantidade <= 0) {
+                alert('Digite uma quantidade válida!');
+                return;
+            }
+            
+            if (!descricao) {
+                alert('Digite uma descrição para a venda!');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/vender', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        item_id: itemSelecionado,
+                        quantidade: quantidade,
+                        descricao: descricao
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ Venda registrada com sucesso!');
+                    bootstrap.Modal.getInstance(document.getElementById('modalVenda')).hide();
+                    document.getElementById('form-venda').reset();
+                    carregarEstoque();
+                } else {
+                    alert('❌ Erro: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Erro ao registrar venda: ' + error);
+            }
+        }
+        
+        function abrirVenda() {
+            alert('Selecione um item da lista para vender');
+        }
+        
+        function abrirEntrada() {
+            alert('📥 Funcionalidade de entrada em desenvolvimento');
+        }
+        
+        function atualizarEstoque() {
+            carregarEstoque();
+        }
+        
+        // Carregar estoque ao iniciar e a cada 30 segundos
+        carregarEstoque();
+        setInterval(carregarEstoque, 30000);
+    </script>
+</body>
+</html>
